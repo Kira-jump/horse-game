@@ -1,0 +1,16 @@
+{
+  "name": "horse-game",
+  "version": "1.0.0",
+  "description": "Horse Game - Tap to Earn sur Telegram",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-telegram-bot-api": "^0.64.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "dotenv": "^16.0.0",
+    "cors": "^2.8.5"
+  }
+}

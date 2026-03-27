@@ -1,0 +1,449 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const TelegramBot = require('node-telegram-bot-api');
+const { createClient } = require('@supabase/supabase-js');
+const path = require('path');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+
+const ADMIN_PASSWORD = 'horse2024admin';
+
+const LEVELS = [
+    { name: 'Bronze',   icon: '🥉', min: 0,        tapBonus: 1  },
+    { name: 'Silver',   icon: '🥈', min: 50000,    tapBonus: 2  },
+    { name: 'Gold',     icon: '🥇', min: 500000,   tapBonus: 3  },
+    { name: 'Platinum', icon: '💠', min: 2000000,  tapBonus: 4  },
+    { name: 'Diamond',  icon: '💎', min: 10000000, tapBonus: 5  },
+    { name: 'Legend',   icon: '👑', min: 50000000, tapBonus: 10 },
+];
+
+function getLevel(totalCoins) {
+    let level = LEVELS[0];
+    for (const l of LEVELS) {
+        if (totalCoins >= l.min) level = l;
+    }
+    return level;
+}
+
+async function checkLevelUp(telegramId, totalCoins) {
+    const level = getLevel(totalCoins);
+    const { data: user } = await supabase.from('users').select('level').eq('telegram_id', telegramId).single();
+    if (user && user.level !== level.name) {
+        await supabase.from('users').update({ level: level.name, coins_per_tap: level.tapBonus }).eq('telegram_id', telegramId);
+        sendNotification(telegramId, 'levelup_' + level.name, level.icon + ' Felicitations ! Tu es passe niveau ' + level.name + ' ! Ton tap est maintenant x' + level.tapBonus + ' !');
+    }
+}
+
+async function sendNotification(telegramId, type, message) {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const { data: existing } = await supabase.from('notifications').select('*').eq('telegram_id', telegramId).eq('type', type).eq('sent_date', today).single();
+        if (!existing) {
+            await bot.sendMessage(telegramId, message, {
+                reply_markup: { inline_keyboard: [[{ text: '🎮 Jouer', web_app: { url: process.env.APP_URL } }]] }
+            });
+            await supabase.from('notifications').insert({ telegram_id: telegramId, type, sent_date: today });
+        }
+    } catch(e) {}
+}
+
+bot.onText(/\/start (.+)/, async (msg, match) => {
+    await registerUser(msg, match[1]);
+    sendWelcome(msg.chat.id);
+});
+
+bot.onText(/\/start$/, async (msg) => {
+    await registerUser(msg, null);
+    sendWelcome(msg.chat.id);
+});
+
+async function registerUser(msg, referrerId) {
+    const telegramId = msg.chat.id.toString();
+    const username = msg.chat.username || msg.chat.first_name || 'Joueur';
+    const { data: existing } = await supabase.from('users').select('*').eq('telegram_id', telegramId).single();
+    if (!existing) {
+        await supabase.from('users').insert({ telegram_id: telegramId, username, referred_by: referrerId || null });
+        if (referrerId) {
+            const { data: ref } = await supabase.from('users').select('*').eq('telegram_id', referrerId).single();
+            if (ref) {
+                await supabase.from('users').update({ coins: ref.coins + 500, referrals: ref.referrals + 1 }).eq('telegram_id', referrerId);
+                sendNotification(referrerId, 'referral', '👥 Un ami vient de rejoindre ! Tu as recu 500 coins !');
+            }
+        }
+        setTimeout(() => {
+            bot.sendMessage(telegramId, '🐴 Bienvenue sur Horse Game !\n\n✅ Missions quotidiennes\n⚡ Boosts temporaires\n🃏 Cartes a collecter\n💎 Wallet TON\n🎰 Roue de la Fortune\n\nTape /start pour jouer !');
+        }, 2000);
+    }
+}
+
+function sendWelcome(chatId) {
+    bot.sendMessage(chatId, '🐴 Bienvenue sur Horse Game !', {
+        reply_markup: { inline_keyboard: [[{ text: '🎮 Jouer', web_app: { url: process.env.APP_URL } }]] }
+    });
+}
+
+// INIT USER
+app.post('/api/user/init', async (req, res) => {
+    try {
+        const { telegramId, username } = req.body;
+        let { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegramId).single();
+        if (!user) {
+            const { data: newUser } = await supabase.from('users').insert({ telegram_id: telegramId, username }).select().single();
+            user = newUser;
+        }
+        const now = Date.now();
+        const lastSeen = new Date(user.last_seen).getTime();
+        const diffHours = (now - lastSeen) / (1000 * 60 * 60);
+        const earned = Math.floor(diffHours * user.coins_per_hour);
+        if (earned > 0) {
+            await supabase.from('users').update({ coins: user.coins + earned, last_seen: new Date() }).eq('telegram_id', telegramId);
+            user.coins += earned;
+        }
+        res.json(user);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// SAVE COINS
+app.post('/api/user/:telegramId/tap', async (req, res) => {
+    try {
+        const { coins } = req.body;
+        const { data: currentUser } = await supabase.from('users').select('total_coins').eq('telegram_id', req.params.telegramId).single();
+        const totalCoins = Math.max(coins, currentUser?.total_coins || 0);
+        const { data: user } = await supabase.from('users').update({ coins, last_seen: new Date(), total_coins: totalCoins }).eq('telegram_id', req.params.telegramId).select().single();
+        await checkLevelUp(req.params.telegramId, totalCoins);
+        res.json(user);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// SAVE PHOTO
+app.post('/api/user/:telegramId/save-photo', async (req, res) => {
+    try {
+        const { photoUrl } = req.body;
+        await supabase.from('users').update({ photo_url: photoUrl }).eq('telegram_id', req.params.telegramId);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// SAVE WALLET
+app.post('/api/user/:telegramId/wallet', async (req, res) => {
+    try {
+        const { walletAddress } = req.body;
+        await supabase.from('users').update({ wallet_address: walletAddress }).eq('telegram_id', req.params.telegramId);
+        sendNotification(req.params.telegramId, 'wallet_connected', '💎 Ton wallet TON est connecte ! Pret pour recevoir tes tokens !');
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// UPDATE LEVEL
+app.post('/api/user/:telegramId/update-level', async (req, res) => {
+    try {
+        const { level } = req.body;
+        await supabase.from('users').update({ level }).eq('telegram_id', req.params.telegramId);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// UPDATE TAPS
+app.post('/api/user/:telegramId/update-taps', async (req, res) => {
+    try {
+        const { taps } = req.body;
+        const { data: user } = await supabase.from('users').select('*').eq('telegram_id', req.params.telegramId).single();
+        if (!user) return res.status(404).json({ error: 'Utilisateur non trouve' });
+        const newTotalTaps = (user.total_taps || 0) + taps;
+        const newBestDay = Math.max(user.best_day_taps || 0, taps);
+        const today = new Date().toISOString().split('T')[0];
+        const lastReset = user.last_daily_reset;
+        let streak = user.streak || 0;
+        if (lastReset !== today) {
+            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+            streak = lastReset === yesterday ? streak + 1 : 1;
+        }
+        await supabase.from('users').update({ total_taps: newTotalTaps, best_day_taps: newBestDay, streak, last_daily_reset: today }).eq('telegram_id', req.params.telegramId);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// BUY CARD
+app.post('/api/user/:telegramId/buy-card', async (req, res) => {
+    try {
+        const { cardId, cost, coinsPerHour } = req.body;
+        const { data: user } = await supabase.from('users').select('*').eq('telegram_id', req.params.telegramId).single();
+        if (!user) return res.status(404).json({ error: 'Utilisateur non trouve' });
+        if (user.coins < cost) return res.status(400).json({ error: 'Pas assez de coins' });
+        const cards = user.cards || [];
+        const cardIndex = cards.findIndex(c => c.cardId === cardId);
+        if (cardIndex >= 0) cards[cardIndex].level += 1;
+        else cards.push({ cardId, level: 1 });
+        const { data: updated } = await supabase.from('users').update({ coins: user.coins - cost, coins_per_hour: user.coins_per_hour + coinsPerHour, cards }).eq('telegram_id', req.params.telegramId).select().single();
+        res.json(updated);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// LEADERBOARD
+app.get('/api/leaderboard', async (req, res) => {
+    try {
+        const level = req.query.level || 'Bronze';
+        const { data: users } = await supabase.from('users').select('username, coins, level, photo_url, telegram_id').eq('level', level).order('coins', { ascending: false }).limit(20);
+        res.json(users || []);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET MISSIONS
+app.get('/api/missions/:telegramId', async (req, res) => {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const { data: completed } = await supabase.from('missions').select('mission_id').eq('telegram_id', req.params.telegramId).eq('completed_at', today);
+        res.json(completed || []);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// COMPLETE MISSION
+app.post('/api/missions/:telegramId/complete', async (req, res) => {
+    try {
+        const { missionId, reward } = req.body;
+        const today = new Date().toISOString().split('T')[0];
+        const { data: existing } = await supabase.from('missions').select('*').eq('telegram_id', req.params.telegramId).eq('mission_id', missionId).eq('completed_at', today).single();
+        if (existing) return res.status(400).json({ error: 'Mission deja completee' });
+        await supabase.from('missions').insert({ telegram_id: req.params.telegramId, mission_id: missionId, completed_at: today });
+        const { data: user } = await supabase.from('users').select('*').eq('telegram_id', req.params.telegramId).single();
+        const { data: updated } = await supabase.from('users').update({ coins: user.coins + reward }).eq('telegram_id', req.params.telegramId).select().single();
+        res.json(updated);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// WHEEL SPIN
+app.post('/api/wheel/:telegramId/spin', async (req, res) => {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const { data: todaySpins } = await supabase.from('wheel_spins').select('*').eq('telegram_id', req.params.telegramId).eq('spun_date', today);
+        const freeSpinUsed = todaySpins && todaySpins.length > 0;
+        if (freeSpinUsed) {
+            const { data: user } = await supabase.from('users').select('coins').eq('telegram_id', req.params.telegramId).single();
+            if (!user || user.coins < 1000) return res.status(400).json({ error: 'Pas assez de coins ! (1000 coins)' });
+            await supabase.from('users').update({ coins: user.coins - 1000 }).eq('telegram_id', req.params.telegramId);
+        }
+        const rewards = [
+            { label: '500 🪙', type: 'coins', value: 500,   probability: 30 },
+            { label: '1K 🪙',  type: 'coins', value: 1000,  probability: 25 },
+            { label: '5K 🪙',  type: 'coins', value: 5000,  probability: 15 },
+            { label: '10K 🪙', type: 'coins', value: 10000, probability: 10 },
+            { label: '⚡ x2',  type: 'boost', value: 2,     probability: 8  },
+            { label: '🔥 x3',  type: 'boost', value: 3,     probability: 5  },
+            { label: '🃏 Carte',type: 'card',  value: 0,     probability: 5  },
+            { label: '💎 50K', type: 'coins', value: 50000, probability: 2  },
+        ];
+        const total = rewards.reduce((s, r) => s + r.probability, 0);
+        let rand = Math.random() * total;
+        let selected = rewards[0];
+        for (const r of rewards) { rand -= r.probability; if (rand <= 0) { selected = r; break; } }
+        const { data: user } = await supabase.from('users').select('*').eq('telegram_id', req.params.telegramId).single();
+        if (selected.type === 'coins') await supabase.from('users').update({ coins: user.coins + selected.value }).eq('telegram_id', req.params.telegramId);
+        await supabase.from('wheel_spins').insert({ telegram_id: req.params.telegramId, reward: selected.label, reward_value: selected.value, spun_date: today });
+        res.json({ reward: selected, freeSpinUsed, user });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// WHEEL STATUS
+app.get('/api/wheel/:telegramId/status', async (req, res) => {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const { data: spins } = await supabase.from('wheel_spins').select('*').eq('telegram_id', req.params.telegramId).eq('spun_date', today);
+        res.json({ freeSpinUsed: spins && spins.length > 0, spinsToday: spins?.length || 0 });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// SHOP
+const SHOP_ITEMS = [
+    { id: 'tap_plus1',   name: '+1 Tap permanent', icon: '⚡',   priceTon: 0.5, priceCoins: null, type: 'tap',    value: 1        },
+    { id: 'tap_plus5',   name: '+5 Tap permanent', icon: '⚡⚡', priceTon: 2,   priceCoins: null, type: 'tap',    value: 5        },
+    { id: 'tap_plus10',  name: '+10 Tap permanent',icon: '🔥',   priceTon: 5,   priceCoins: null, type: 'tap',    value: 10       },
+    { id: 'vip_badge',   name: 'Badge VIP',         icon: '👑',   priceTon: 1,   priceCoins: null, type: 'vip',    value: 1        },
+    { id: 'coins_pack1', name: '1M Coins',           icon: '💰',   priceTon: 0.3, priceCoins: null, type: 'coins',  value: 1000000  },
+    { id: 'coins_pack2', name: '10M Coins',          icon: '💎',   priceTon: 1,   priceCoins: null, type: 'coins',  value: 10000000 },
+    { id: 'wheel_ticket',name: 'Ticket Roue x3',    icon: '🎰',   priceTon: null,priceCoins: 50000, type: 'wheel', value: 3        },
+    { id: 'shield',      name: 'Bouclier 24h',       icon: '🛡️',  priceTon: null,priceCoins: 100000,type: 'shield',value: 24       },
+];
+
+app.get('/api/shop', async (req, res) => { res.json(SHOP_ITEMS); });
+
+app.post('/api/shop/:telegramId/buy-coins', async (req, res) => {
+    try {
+        const { itemId } = req.body;
+        const item = SHOP_ITEMS.find(i => i.id === itemId);
+        if (!item || !item.priceCoins) return res.status(400).json({ error: 'Item invalide' });
+        const { data: user } = await supabase.from('users').select('*').eq('telegram_id', req.params.telegramId).single();
+        if (!user || user.coins < item.priceCoins) return res.status(400).json({ error: 'Pas assez de coins' });
+        let updates = { coins: user.coins - item.priceCoins };
+        if (item.type === 'shield') updates.shield_until = new Date(Date.now() + item.value * 3600 * 1000);
+        const { data: updated } = await supabase.from('users').update(updates).eq('telegram_id', req.params.telegramId).select().single();
+        await supabase.from('shop_purchases').insert({ telegram_id: req.params.telegramId, item_id: itemId, price_coins: item.priceCoins });
+        res.json(updated);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/shop/:telegramId/buy-ton', async (req, res) => {
+    try {
+        const { itemId } = req.body;
+        const item = SHOP_ITEMS.find(i => i.id === itemId);
+        if (!item || !item.priceTon) return res.status(400).json({ error: 'Item invalide' });
+        const { data: user } = await supabase.from('users').select('*').eq('telegram_id', req.params.telegramId).single();
+        if (!user) return res.status(404).json({ error: 'Utilisateur non trouve' });
+        let updates = {};
+        if (item.type === 'tap') { updates.extra_tap = (user.extra_tap || 0) + item.value; updates.coins_per_tap = (user.coins_per_tap || 1) + item.value; }
+        else if (item.type === 'coins') updates.coins = user.coins + item.value;
+        else if (item.type === 'vip') updates.is_vip = true;
+        const { data: updated } = await supabase.from('users').update(updates).eq('telegram_id', req.params.telegramId).select().single();
+        await supabase.from('shop_purchases').insert({ telegram_id: req.params.telegramId, item_id: itemId, price_ton: item.priceTon });
+        res.json(updated);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PROMO
+app.post('/api/promo/:telegramId/use', async (req, res) => {
+    try {
+        const { code } = req.body;
+        const upperCode = code.toUpperCase().trim();
+        const { data: promo } = await supabase.from('promo_codes').select('*').eq('code', upperCode).single();
+        if (!promo) return res.status(404).json({ error: 'Code invalide !' });
+        if (promo.expires_at && new Date(promo.expires_at) < new Date()) return res.status(400).json({ error: 'Code expire !' });
+        if (promo.current_uses >= promo.max_uses) return res.status(400).json({ error: 'Code epuise !' });
+        const { data: alreadyUsed } = await supabase.from('promo_uses').select('*').eq('telegram_id', req.params.telegramId).eq('code', upperCode).single();
+        if (alreadyUsed) return res.status(400).json({ error: 'Code deja utilise !' });
+        const { data: user } = await supabase.from('users').select('*').eq('telegram_id', req.params.telegramId).single();
+        const { data: updated } = await supabase.from('users').update({ coins: user.coins + promo.reward_coins }).eq('telegram_id', req.params.telegramId).select().single();
+        await supabase.from('promo_uses').insert({ telegram_id: req.params.telegramId, code: upperCode });
+        await supabase.from('promo_codes').update({ current_uses: promo.current_uses + 1 }).eq('code', upperCode);
+        res.json({ success: true, reward: promo.reward_coins, user: updated });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// CHAT
+app.get('/api/chat', async (req, res) => {
+    try {
+        const { data: messages } = await supabase.from('chat_messages').select('*').order('created_at', { ascending: false }).limit(50);
+        res.json(messages || []);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/chat/:telegramId', async (req, res) => {
+    try {
+        const { message } = req.body;
+        if (!message || message.trim().length === 0) return res.status(400).json({ error: 'Message vide' });
+        if (message.length > 200) return res.status(400).json({ error: 'Message trop long' });
+        const { data: user } = await supabase.from('users').select('username, level, is_vip').eq('telegram_id', req.params.telegramId).single();
+        if (!user) return res.status(404).json({ error: 'Utilisateur non trouve' });
+        const { data: lastMsg } = await supabase.from('chat_messages').select('created_at').eq('telegram_id', req.params.telegramId).order('created_at', { ascending: false }).limit(1).single();
+        if (lastMsg) {
+            const diff = Date.now() - new Date(lastMsg.created_at).getTime();
+            if (diff < 10000) return res.status(429).json({ error: 'Attends ' + Math.ceil((10000 - diff) / 1000) + 's !' });
+        }
+        const { data: newMsg } = await supabase.from('chat_messages').insert({ telegram_id: req.params.telegramId, username: user.username, level: user.level || 'Bronze', is_vip: user.is_vip || false, message: message.trim() }).select().single();
+        await supabase.from('chat_messages').delete().lt('created_at', new Date(Date.now() - 48 * 3600 * 1000).toISOString());
+        res.json(newMsg);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// STATS
+app.get('/api/stats/:telegramId', async (req, res) => {
+    try {
+        const { data: user } = await supabase.from('users').select('*').eq('telegram_id', req.params.telegramId).single();
+        if (!user) return res.status(404).json({ error: 'Utilisateur non trouve' });
+        const { count } = await supabase.from('users').select('*', { count: 'exact' }).gt('coins', user.coins);
+        const { data: missions } = await supabase.from('missions').select('*').eq('telegram_id', req.params.telegramId);
+        const { data: spins } = await supabase.from('wheel_spins').select('*').eq('telegram_id', req.params.telegramId);
+        const bestSpin = spins?.reduce((best, spin) => spin.reward_value > (best?.reward_value || 0) ? spin : best, null);
+        res.json({ user, globalRank: (count || 0) + 1, totalMissions: missions?.length || 0, totalSpins: spins?.length || 0, bestSpinReward: bestSpin?.reward || 'Aucune', bestSpinValue: bestSpin?.reward_value || 0 });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PHOTO
+app.get('/api/user/:telegramId/photo', async (req, res) => {
+    try {
+        const photos = await bot.getUserProfilePhotos(req.params.telegramId, { limit: 1 });
+        if (photos.total_count > 0) {
+            const fileId = photos.photos[0][0].file_id;
+            const file = await bot.getFile(fileId);
+            const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+            res.json({ photoUrl });
+        } else { res.json({ photoUrl: null }); }
+    } catch (err) { res.json({ photoUrl: null }); }
+});
+
+// ADMIN
+app.get('/api/admin/stats', async (req, res) => {
+    try {
+        const { data: users } = await supabase.from('users').select('*').order('coins', { ascending: false });
+        const today = new Date().toISOString().split('T')[0];
+        const { data: spins } = await supabase.from('wheel_spins').select('*').eq('spun_date', today);
+        res.json({ totalUsers: users?.length || 0, totalCoins: users?.reduce((s, u) => s + (u.coins || 0), 0) || 0, spinsToday: spins?.length || 0, walletsConnected: users?.filter(u => u.wallet_address).length || 0, users: users || [] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/notify-all', async (req, res) => {
+    try {
+        const { message, password } = req.body;
+        if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Non autorise' });
+        const { data: users } = await supabase.from('users').select('telegram_id');
+        let sent = 0;
+        for (const user of users || []) {
+            try { await bot.sendMessage(user.telegram_id, message, { reply_markup: { inline_keyboard: [[{ text: '🎮 Jouer', web_app: { url: process.env.APP_URL } }]] } }); sent++; await new Promise(r => setTimeout(r, 100)); } catch(e) {}
+        }
+        res.json({ success: true, sent });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/give-coins', async (req, res) => {
+    try {
+        const { telegramId, amount, password } = req.body;
+        if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Non autorise' });
+        const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegramId).single();
+        if (!user) return res.status(404).json({ error: 'Joueur non trouve' });
+        const { data: updated } = await supabase.from('users').update({ coins: user.coins + amount, total_coins: (user.total_coins || 0) + amount }).eq('telegram_id', telegramId).select().single();
+        await bot.sendMessage(telegramId, `🎁 L'admin t'a offert ${amount} coins !`, { reply_markup: { inline_keyboard: [[{ text: '🎮 Jouer', web_app: { url: process.env.APP_URL } }]] } });
+        res.json(updated);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/admin/promos', async (req, res) => {
+    try {
+        const { data: promos } = await supabase.from('promo_codes').select('*').order('created_at', { ascending: false });
+        res.json(promos || []);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/promo/create', async (req, res) => {
+    try {
+        const { code, rewardCoins, maxUses, expiresAt, password } = req.body;
+        if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Non autorise' });
+        const { data: promo } = await supabase.from('promo_codes').insert({ code: code.toUpperCase().trim(), reward_coins: rewardCoins, max_uses: maxUses || 100, expires_at: expiresAt || null }).select().single();
+        res.json(promo);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+async function sendDailyNotifications() {
+    try {
+        const { data: users } = await supabase.from('users').select('telegram_id, coins, coins_per_hour');
+        if (!users) return;
+        for (const user of users) {
+            const earned = Math.floor(user.coins_per_hour * 8);
+            const message = earned > 0 ? `🌅 Tu as gagne ${earned} coins pendant ton absence !` : `🌅 Tes missions quotidiennes t'attendent !`;
+            await sendNotification(user.telegram_id, 'daily', message);
+            await new Promise(r => setTimeout(r, 100));
+        }
+    } catch(e) {}
+}
+
+setInterval(sendDailyNotifications, 8 * 60 * 60 * 1000);
+
+app.listen(process.env.PORT, () => console.log(`✅ Serveur demarre sur le port ${process.env.PORT}`));
+console.log('🐴 Horse Game Bot demarre...');
+console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? '✅' : '❌');
+console.log('SUPABASE_KEY:', process.env.SUPABASE_KEY ? '✅' : '❌');
+console.log('BOT_TOKEN:', process.env.BOT_TOKEN ? '✅' : '❌');
