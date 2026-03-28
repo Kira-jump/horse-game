@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>Horse Game</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        html { touch-action: pan-x pan-y; }
+        body { background: #0d0d1a; color: white; font-family: 'Nunito', Arial, sans-serif; min-height: 100vh; user-select: none; overflow-x: hidden; }
+
+        /* BG */
+        .bg-glow { position: fixed; width: 300px; height: 300px; border-radius: 50%; filter: blur(80px); opacity: 0.15; pointer-events: none; z-index: 0; }
+        .bg-glow-1 { background: #f0c040; top: -100px; left: -100px; animation: glow1 8s infinite alternate; }
+        .bg-glow-2 { background: #e07b00; bottom: -100px; right: -100px; animation: glow2 10s infinite alternate; }
+        @keyframes glow1 { 0% { transform: translate(0,0); } 100% { transform: translate(50px,50px); } }
+        @keyframes glow2 { 0% { transform: translate(0,0); } 100% { transform: translate(-50px,-50px); } }
+
+        /* HEADER */
+        .game-header { padding: 12px 15px 0; width: 100%; position: relative; z-index: 1; }
+        .game-header-top { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .avatar-circle { width: 65px; height: 65px; border-radius: 50%; border: 3px solid #cd7f32; overflow: hidden; flex-shrink: 0; background: linear-gradient(135deg, #f0c040, #e07b00); display: flex; align-items: center; justify-content: center; font-size: 28px; box-shadow: 0 0 15px rgba(205,127,50,0.3); }
+        .avatar-circle img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .header-middle { flex: 1; min-width: 0; }
+        .header-username { font-size: 13px; font-weight: 800; color: white; margin-bottom: 2px; }
+        .header-level-name { font-size: 10px; color: #cd7f32; font-weight: 700; margin-bottom: 5px; }
+        .header-progress-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 10px; overflow: hidden; }
+        .header-progress-fill { height: 100%; background: linear-gradient(90deg, #f0c040, #e07b00); border-radius: 10px; transition: width 0.5s ease; }
+        .header-progress-text { display: flex; justify-content: space-between; font-size: 9px; color: #555; margin-top: 2px; }
+        .coins-cartouche { flex-shrink: 0; background: rgba(240,192,64,0.1); border: 1px solid rgba(240,192,64,0.25); border-radius: 15px; padding: 8px 12px; text-align: center; min-width: 110px; }
+        .coins-cartouche-value { font-size: 16px; font-weight: 900; color: #f0c040; letter-spacing: -0.5px; line-height: 1.1; }
+        .coins-cartouche-label { font-size: 9px; color: #888; }
+        .game-header-progress { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 10px; overflow: hidden; margin-bottom: 3px; }
+        .game-header-progress-fill { height: 100%; background: linear-gradient(90deg, #f0c040, #e07b00); border-radius: 10px; transition: width 0.5s ease; }
+        .game-header-progress-text { display: flex; justify-content: space-between; font-size: 9px; color: #555; margin-bottom: 5px; }
+
+        /* NAV */
+        .nav { display: flex; justify-content: space-around; background: rgba(22,33,62,0.95); backdrop-filter: blur(20px); padding: 10px 0 14px; position: fixed; bottom: 0; width: 100%; z-index: 100; border-top: 1px solid rgba(240,192,64,0.1); }
+        .nav-btn { background: none; border: none; color: #555; font-size: 10px; font-family: 'Nunito', sans-serif; font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; transition: all 0.3s; padding: 0 10px; }
+        .nav-btn.active { color: #f0c040; }
+        .nav-btn .nav-icon { font-size: 22px; transition: transform 0.3s; }
+        .nav-btn.active .nav-icon { transform: scale(1.2); }
+
+        /* PAGES */
+        .page { display: none; padding: 10px 15px; padding-bottom: 80px; position: relative; z-index: 1; }
+        .page.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* HOME */
+        .home { display: flex; flex-direction: column; align-items: center; padding-top: 5px; }
+
+        /* WALLET */
+        .wallet-btn { background: linear-gradient(135deg, #0088cc, #0066aa); color: white; border: none; border-radius: 12px; padding: 6px 15px; font-size: 12px; font-weight: 900; cursor: pointer; font-family: 'Nunito', sans-serif; display: flex; align-items: center; gap: 8px; margin: 3px auto; transition: transform 0.2s; }
+        .wallet-connected { background: linear-gradient(135deg, rgba(0,200,100,0.15), rgba(0,150,80,0.1)); border: 1px solid rgba(0,200,100,0.3); border-radius: 12px; padding: 6px 15px; margin: 3px auto; text-align: center; font-size: 12px; color: #00c864; font-weight: 700; display: none; }
+
+        /* STATS ROW */
+        .stats-row { display: flex; gap: 10px; margin: 5px 0 8px; }
+        .stat-box { background: rgba(255,255,255,0.05); border: 1px solid rgba(240,192,64,0.2); border-radius: 12px; padding: 6px 12px; text-align: center; font-size: 11px; color: #aaa; }
+        .stat-box strong { display: block; color: #f0c040; font-size: 13px; font-weight: 800; }
+
+        /* TAP */
+        .floating-links { position: relative; width: 100%; display: flex; justify-content: center; align-items: center; }
+        .float-left { position: absolute; left: 5px; display: flex; flex-direction: column; gap: 12px; }
+        .float-right { position: absolute; right: 5px; display: flex; flex-direction: column; gap: 12px; }
+        .float-btn { width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; transition: transform 0.2s; flex-direction: column; gap: 2px; }
+        .float-btn:active { transform: scale(0.9); }
+        .float-btn-label { font-size: 8px; font-weight: 800; color: white; }
+        .float-red { background: rgba(255,50,50,0.2); border: 1px solid rgba(255,50,50,0.4); }
+        .float-green { background: rgba(0,200,100,0.2); border: 1px solid rgba(0,200,100,0.4); }
+        .tap-container { position: relative; margin-bottom: 5px; }
+        .tap-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 220px; height: 220px; border-radius: 50%; border: 2px solid rgba(240,192,64,0.3); animation: ringPulse 2s infinite; }
+        .tap-ring-2 { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 245px; height: 245px; border-radius: 50%; border: 1px solid rgba(240,192,64,0.15); animation: ringPulse 2s infinite 0.5s; }
+        @keyframes ringPulse { 0% { transform: translate(-50%,-50%) scale(1); opacity: 1; } 100% { transform: translate(-50%,-50%) scale(1.1); opacity: 0; } }
+        .tap-btn { width: 190px; height: 190px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #ffe066, #f0c040 40%, #e07b00 80%, #b35900); border: none; font-size: 90px; cursor: pointer; box-shadow: 0 0 60px rgba(240,192,64,0.4), 0 20px 40px rgba(0,0,0,0.5); transition: transform 0.1s; position: relative; z-index: 1; overflow: hidden; background: #0d0d1a; box-shadow: 0 0 40px rgba(150,150,200,0.4); }
+        .tap-btn:active { transform: scale(0.92); }
+        .tap-btn img { width: 110%; height: 110%; object-fit: cover; margin-top: -5%; margin-left: -5%; }
+
+        /* FLOAT TAP */
+        .float-tap { position: fixed; font-size: 22px; font-weight: 900; color: #f0c040; text-shadow: 0 2px 10px rgba(240,192,64,0.5); pointer-events: none; animation: floatUp 0.8s ease forwards; z-index: 999; }
+        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-80px) scale(1.3); } }
+
+        /* BOOST */
+        .boost-active-bar { background: linear-gradient(135deg, rgba(240,192,64,0.15), rgba(224,123,0,0.1)); border: 1px solid rgba(240,192,64,0.3); border-radius: 12px; padding: 8px 15px; margin-top: 8px; display: none; text-align: center; font-size: 13px; font-weight: 800; color: #f0c040; animation: pulse 1s infinite alternate; }
+        @keyframes pulse { 0% { box-shadow: 0 0 10px rgba(240,192,64,0.2); } 100% { box-shadow: 0 0 20px rgba(240,192,64,0.5); } }
+        .boost-container { margin-top: 8px; display: flex; gap: 10px; justify-content: center; }
+        .boost-btn { background: linear-gradient(135deg, rgba(22,33,62,0.9), rgba(15,25,50,0.9)); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 5px 8px; text-align: center; cursor: pointer; transition: all 0.2s; flex: 1; font-family: 'Nunito', sans-serif; color: white; }
+        .boost-btn.active-boost { border-color: #f0c040; background: linear-gradient(135deg, rgba(240,192,64,0.2), rgba(224,123,0,0.1)); }
+        .boost-btn.cooldown { opacity: 0.5; cursor: default; }
+        .boost-icon { font-size: 20px; }
+        .boost-name { font-size: 11px; font-weight: 800; margin: 2px 0; }
+        .boost-timer { font-size: 11px; color: #f0c040; font-weight: 700; }
+
+        /* CARDS */
+        h2 { font-size: 20px; font-weight: 900; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .card { background: linear-gradient(135deg, rgba(22,33,62,0.9), rgba(15,25,50,0.9)); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 15px; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .card:active { transform: scale(0.95); border-color: rgba(240,192,64,0.4); }
+        .card-icon { font-size: 36px; margin-bottom: 5px; }
+        .card-name { font-size: 13px; font-weight: 800; margin-bottom: 3px; }
+        .card-level { font-size: 11px; color: #888; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 2px 8px; display: inline-block; margin-bottom: 5px; }
+        .card-income { font-size: 12px; color: #4caf50; font-weight: 700; margin: 3px 0; }
+        .card-cost { font-size: 13px; color: #f0c040; font-weight: 800; margin-top: 8px; background: rgba(240,192,64,0.1); border-radius: 10px; padding: 4px 8px; }
+
+        /* MISSIONS */
+        .mission-item { background: linear-gradient(135deg, rgba(22,33,62,0.9), rgba(15,25,50,0.9)); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 15px; }
+        .mission-item.completed { opacity: 0.5; }
+        .mission-icon { font-size: 36px; }
+        .mission-info { flex: 1; }
+        .mission-name { font-size: 15px; font-weight: 800; margin-bottom: 3px; }
+        .mission-reward { font-size: 13px; color: #f0c040; font-weight: 700; }
+        .mission-progress { font-size: 12px; color: #888; margin-top: 3px; }
+        .mission-btn { background: linear-gradient(135deg, #f0c040, #e07b00); color: #1a1a2e; border: none; border-radius: 12px; padding: 10px 15px; font-size: 13px; font-weight: 900; cursor: pointer; font-family: 'Nunito', sans-serif; white-space: nowrap; }
+        .mission-btn.done { background: rgba(255,255,255,0.1); color: #888; cursor: default; }
+
+        /* LEADERBOARD */
+        .level-tabs { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
+        .level-tab { background: rgba(22,33,62,0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px 15px; font-size: 20px; cursor: pointer; transition: all 0.2s; flex-shrink: 0; }
+        .level-tab.active { border-color: #f0c040; background: rgba(240,192,64,0.15); transform: scale(1.1); }
+        .level-tab-title { font-size: 16px; font-weight: 900; color: #f0c040; margin-bottom: 12px; text-align: center; }
+        .leader-item { display: flex; align-items: center; background: rgba(22,33,62,0.8); border: 1px solid rgba(255,255,255,0.05); border-radius: 15px; padding: 12px 15px; margin-bottom: 10px; gap: 12px; }
+        .leader-rank { font-size: 20px; width: 35px; text-align: center; }
+        .leader-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #f0c040, #e07b00); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 900; color: #1a1a2e; overflow: hidden; flex-shrink: 0; }
+        .leader-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .leader-name { flex: 1; font-size: 14px; font-weight: 700; }
+        .leader-coins { font-size: 14px; color: #f0c040; font-weight: 800; display: flex; align-items: center; gap: 4px; }
+        .my-rank { background: linear-gradient(135deg, rgba(240,192,64,0.15), rgba(224,123,0,0.1)); border: 1px solid rgba(240,192,64,0.3); border-radius: 12px; padding: 12px 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; font-size: 13px; }
+        .my-rank-label { color: #f0c040; font-weight: 800; font-size: 11px; }
+        .empty-leaderboard { text-align: center; padding: 40px 20px; color: #555; font-size: 14px; }
+        .empty-leaderboard .empty-icon { font-size: 48px; margin-bottom: 10px; }
+
+        /* MORE */
+        .more-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 10px; }
+        .more-item { background: rgba(22,33,62,0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 20px 10px; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .more-item:active { transform: scale(0.95); border-color: rgba(240,192,64,0.4); }
+        .more-icon { font-size: 36px; margin-bottom: 8px; }
+        .more-name { font-size: 13px; font-weight: 800; color: #aaa; }
+
+        /* WHEEL */
+        .wheel-container { display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
+        .wheel-wrapper { position: relative; width: 300px; height: 300px; margin: 15px auto; }
+        .wheel-pointer { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 30px; z-index: 10; }
+        .spin-btn { background: linear-gradient(135deg, #f0c040, #e07b00); color: #1a1a2e; border: none; border-radius: 20px; padding: 14px 40px; font-size: 17px; font-weight: 900; cursor: pointer; font-family: 'Nunito', sans-serif; margin-top: 10px; box-shadow: 0 5px 20px rgba(240,192,64,0.3); }
+        .spin-btn:disabled { opacity: 0.5; cursor: default; }
+        .wheel-status { font-size: 13px; color: #888; margin-top: 8px; text-align: center; }
+        .wheel-result { background: linear-gradient(135deg, rgba(240,192,64,0.2), rgba(224,123,0,0.1)); border: 1px solid rgba(240,192,64,0.3); border-radius: 15px; padding: 15px 25px; text-align: center; margin-top: 12px; display: none; animation: fadeIn 0.5s ease; }
+        .wheel-result-icon { font-size: 40px; }
+        .wheel-result-text { font-size: 18px; font-weight: 900; color: #f0c040; margin-top: 5px; }
+
+        /* SHOP */
+        .shop-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+        .shop-tab { flex: 1; background: rgba(22,33,62,0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px; font-size: 13px; font-weight: 800; cursor: pointer; color: #888; font-family: 'Nunito', sans-serif; transition: all 0.2s; }
+        .shop-tab.active { border-color: #f0c040; color: #f0c040; background: rgba(240,192,64,0.1); }
+        .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .shop-item { background: linear-gradient(135deg, rgba(22,33,62,0.9), rgba(15,25,50,0.9)); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 15px; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .shop-item:active { transform: scale(0.95); border-color: rgba(240,192,64,0.4); }
+        .shop-item-icon { font-size: 36px; margin-bottom: 8px; }
+        .shop-item-name { font-size: 12px; font-weight: 800; margin-bottom: 5px; }
+        .shop-item-desc { font-size: 10px; color: #888; margin-bottom: 8px; }
+        .shop-item-price { display: inline-flex; align-items: center; gap: 4px; border-radius: 10px; padding: 4px 10px; font-size: 12px; font-weight: 900; }
+        .price-ton { background: rgba(0,136,204,0.2); border: 1px solid rgba(0,136,204,0.4); color: #0088cc; }
+        .price-coins { background: rgba(240,192,64,0.15); border: 1px solid rgba(240,192,64,0.3); color: #f0c040; }
+
+        /* PROMO */
+        .promo-box { background: linear-gradient(135deg, rgba(240,192,64,0.1), rgba(224,123,0,0.05)); border: 1px solid rgba(240,192,64,0.2); border-radius: 20px; padding: 25px 20px; text-align: center; margin-bottom: 20px; }
+        .promo-box h3 { font-size: 20px; font-weight: 900; margin-bottom: 8px; }
+        .promo-box p { color: #aaa; font-size: 14px; margin-bottom: 20px; }
+        .promo-input { width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(240,192,64,0.3); border-radius: 15px; padding: 14px 20px; color: white; font-size: 18px; font-weight: 900; font-family: 'Nunito', sans-serif; text-align: center; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 15px; outline: none; }
+        .promo-submit { width: 100%; background: linear-gradient(135deg, #f0c040, #e07b00); color: #1a1a2e; border: none; border-radius: 15px; padding: 14px; font-size: 16px; font-weight: 900; cursor: pointer; font-family: 'Nunito', sans-serif; }
+        .promo-result { border-radius: 15px; padding: 15px; margin-top: 15px; text-align: center; font-weight: 800; font-size: 15px; display: none; }
+        .promo-result.success { background: rgba(0,200,100,0.1); border: 1px solid rgba(0,200,100,0.3); color: #00c864; }
+        .promo-result.error { background: rgba(255,50,50,0.1); border: 1px solid rgba(255,50,50,0.3); color: #ff5555; }
+        .promo-history { background: rgba(22,33,62,0.8); border: 1px solid rgba(255,255,255,0.05); border-radius: 20px; padding: 20px; }
+        .promo-history h3 { font-size: 16px; color: #888; margin-bottom: 15px; font-weight: 700; }
+        .promo-history-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+        .promo-code-tag { background: rgba(240,192,64,0.1); border: 1px solid rgba(240,192,64,0.2); border-radius: 8px; padding: 3px 10px; color: #f0c040; font-weight: 900; }
+
+        /* REFERRAL */
+        .ref-box { background: linear-gradient(135deg, rgba(240,192,64,0.1), rgba(224,123,0,0.05)); border: 1px solid rgba(240,192,64,0.2); border-radius: 20px; padding: 25px 20px; text-align: center; margin-bottom: 15px; }
+        .ref-box h3 { font-size: 18px; font-weight: 900; margin-bottom: 10px; }
+        .ref-box p { color: #aaa; font-size: 14px; margin-bottom: 15px; }
+        .ref-link { background: rgba(0,0,0,0.3); border: 1px solid rgba(240,192,64,0.2); border-radius: 12px; padding: 12px; font-size: 11px; color: #f0c040; word-break: break-all; margin-bottom: 15px; text-align: left; }
+        .copy-btn { background: linear-gradient(135deg, #f0c040, #e07b00); color: #1a1a2e; border: none; border-radius: 15px; padding: 14px 30px; font-size: 15px; font-weight: 900; cursor: pointer; width: 100%; font-family: 'Nunito', sans-serif; }
+        .ref-stats { background: rgba(22,33,62,0.8); border: 1px solid rgba(255,255,255,0.05); border-radius: 20px; padding: 25px 20px; text-align: center; }
+        .ref-stats h3 { font-size: 16px; color: #888; margin-bottom: 10px; font-weight: 700; }
+        .ref-count { font-size: 52px; font-weight: 900; color: #f0c040; }
+
+        /* CHAT */
+        .chat-page { display: flex; flex-direction: column; height: calc(100vh - 120px); padding: 0; }
+        .chat-header { padding: 15px 20px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .chat-online { font-size: 11px; color: #00c864; margin-top: 2px; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+        .chat-message { display: flex; gap: 10px; animation: fadeIn 0.3s ease; }
+        .chat-message.own { flex-direction: row-reverse; }
+        .chat-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #f0c040, #e07b00); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; overflow: hidden; }
+        .chat-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .chat-bubble { max-width: 75%; }
+        .chat-meta { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; font-size: 11px; }
+        .chat-name { font-weight: 800; color: white; }
+        .chat-level-badge { border-radius: 5px; padding: 1px 5px; font-size: 9px; font-weight: 800; }
+        .chat-vip-badge { background: linear-gradient(135deg, #ffd700, #ff6600); border-radius: 5px; padding: 1px 5px; font-size: 9px; font-weight: 900; color: white; }
+        .chat-time { color: #555; font-size: 10px; }
+        .chat-text { background: rgba(22,33,62,0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 15px; border-top-left-radius: 3px; padding: 10px 14px; font-size: 14px; line-height: 1.4; word-break: break-word; }
+        .chat-message.own .chat-text { background: rgba(240,192,64,0.15); border-color: rgba(240,192,64,0.2); border-top-left-radius: 15px; border-top-right-radius: 3px; }
+        .chat-message.own .chat-meta { flex-direction: row-reverse; }
+        .chat-input-area { padding: 10px 15px; background: rgba(13,13,26,0.95); border-top: 1px solid rgba(255,255,255,0.05); display: flex; gap: 10px; align-items: center; }
+        .chat-input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 10px 15px; color: white; font-size: 14px; font-family: 'Nunito', sans-serif; outline: none; resize: none; }
+        .chat-send-btn { width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(135deg, #f0c040, #e07b00); border: none; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    </style>
+</head>
+<body>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+
+<!-- HEADER -->
+<div class="game-header">
+    <div class="game-header-top">
+        <div class="avatar-circle" id="avatar-circle">
+            <img id="player-avatar" src="" style="display:none;width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none';document.getElementById('avatar-emoji').style.display='flex'">
+            <span id="avatar-emoji" style="display:flex">🐴</span>
+        </div>
+        <div class="header-middle">
+            <div class="header-username" id="username">Joueur</div>
+            <div class="header-level-name" id="header-level-name">🥉 Bronze</div>
+        </div>
+        <div class="coins-cartouche">
+            <div style="display:flex;align-items:center;gap:6px;justify-content:center">
+                <img src="/coins_silver.png" style="width:24px;height:24px;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'">
+                <div>
+                    <div class="coins-cartouche-value" id="coins">0</div>
+                    <div class="coins-cartouche-label">coins</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="game-header-progress">
+        <div class="game-header-progress-fill" id="level-progress-fill" style="width:0%"></div>
+    </div>
+    <div class="game-header-progress-text">
+        <span id="level-current-coins">0</span>
+        <span id="level-next-coins">50K</span>
+    </div>
+</div>
+
+<!-- HOME -->
+<div class="page active" id="page-home">
+    <div class="home">
+        <button class="wallet-btn" id="wallet-btn" onclick="connectWallet()" style="display:none">
+            💎 Connecter Wallet TON
+        </button>
+        <div class="wallet-connected" id="wallet-connected">
+            ✅ Wallet connecté !<br><span id="wallet-address" style="font-size:10px;color:#aaa;"></span>
+        </div>
+        <div class="stats-row">
+            <div class="stat-box"><strong id="per-hour-val">0</strong>coins/heure</div>
+        </div>
+        <div class="floating-links">
+            <div class="float-left">
+                <div class="float-btn float-red" onclick="showPageFromHome('wheel')">🎰<span class="float-btn-label">Roue</span></div>
+                <div class="float-btn float-red" onclick="showPageFromHome('shop')">🛒<span class="float-btn-label">Shop</span></div>
+            </div>
+            <div class="float-right">
+                <div class="float-btn float-green" onclick="showPageFromHome('referral')">👥<span class="float-btn-label">Amis</span></div>
+                <div class="float-btn float-green" onclick="showPageFromHome('promo')">🎁<span class="float-btn-label">Promo</span></div>
+            </div>
+            <div class="tap-container">
+                <div class="tap-ring"></div>
+                <div class="tap-ring-2"></div>
+                <button class="tap-btn" id="tap-btn">
+                    <img src="/coins_silver.png" onerror="this.style.display='none'">
+                </button>
+            </div>
+        </div>
+        <div class="boost-active-bar" id="boost-active-bar">⚡ BOOST ACTIF ! x<span id="boost-multiplier">1</span> — <span id="boost-countdown">30</span>s</div>
+        <div class="boost-container" id="boost-container"></div>
+    </div>
+</div>
+
+<!-- CARDS -->
+<div class="page" id="page-cards">
+    <h2>🃏 Cartes</h2>
+    <div class="cards-grid" id="cards-grid"></div>
+</div>
+
+<!-- MISSIONS -->
+<div class="page" id="page-missions">
+    <h2>🎯 Missions</h2>
+    <div id="missions-list"></div>
+</div>
+
+<!-- LEADERBOARD -->
+<div class="page" id="page-leaderboard">
+    <h2>🏆 Classement</h2>
+    <div class="level-tabs" id="level-tabs">
+        <button class="level-tab active" onclick="switchLeaderboard('Bronze', this)">🥉</button>
+        <button class="level-tab" onclick="switchLeaderboard('Silver', this)">🥈</button>
+        <button class="level-tab" onclick="switchLeaderboard('Gold', this)">🥇</button>
+        <button class="level-tab" onclick="switchLeaderboard('Platinum', this)">💠</button>
+        <button class="level-tab" onclick="switchLeaderboard('Diamond', this)">💎</button>
+        <button class="level-tab" onclick="switchLeaderboard('Legend', this)">👑</button>
+    </div>
+    <div class="level-tab-title" id="level-tab-title">🥉 Bronze</div>
+    <div id="leaderboard-list"></div>
+</div>
+
+<!-- MORE -->
+<div class="page" id="page-more">
+    <h2>⋯ Plus</h2>
+    <div class="more-grid">
+        <div class="more-item" onclick="navigateTo('wheel')"><div class="more-icon">🎰</div><div class="more-name">Roue</div></div>
+        <div class="more-item" onclick="navigateTo('shop')"><div class="more-icon">🛒</div><div class="more-name">Boutique</div></div>
+        <div class="more-item" onclick="navigateTo('promo')"><div class="more-icon">🎁</div><div class="more-name">Promo</div></div>
+        <div class="more-item" onclick="navigateTo('referral')"><div class="more-icon">👥</div><div class="more-name">Amis</div></div>
+        <div class="more-item" onclick="navigateTo('chat')"><div class="more-icon">💬</div><div class="more-name">Chat</div></div>
+        <div class="more-item" onclick="navigateTo('stats')"><div class="more-icon">📊</div><div class="more-name">Stats</div></div>
+    </div>
+</div>
+
+<!-- WHEEL -->
+<div class="page" id="page-wheel">
+    <h2>🎰 Roue de la Fortune</h2>
+    <div class="wheel-container">
+        <div class="wheel-wrapper">
+            <div class="wheel-pointer">▼</div>
+            <canvas id="wheelCanvas" width="300" height="300"></canvas>
+        </div>
+        <button class="spin-btn" id="spin-btn" onclick="spinWheel()">🎰 Tour Gratuit !</button>
+        <div class="wheel-status" id="wheel-status">✨ 1 tour gratuit disponible !</div>
+        <div class="wheel-result" id="wheel-result">
+            <div class="wheel-result-icon" id="result-icon">🎉</div>
+            <div class="wheel-result-text" id="result-text">+1000 coins !</div>
+        </div>
+    </div>
+</div>
+
+<!-- SHOP -->
+<div class="page" id="page-shop">
+    <h2>🛒 Boutique</h2>
+    <div class="shop-tabs">
+        <button class="shop-tab active" onclick="switchShopTab('ton', this)">💎 TON</button>
+        <button class="shop-tab" onclick="switchShopTab('coins', this)">🪙 Coins</button>
+    </div>
+    <div class="shop-grid" id="shop-grid"></div>
+</div>
+
+<!-- PROMO -->
+<div class="page" id="page-promo">
+    <h2>🎁 Codes Promo</h2>
+    <div class="promo-box">
+        <h3>🎟️ Entre ton code !</h3>
+        <p>Les codes promo te donnent des coins et des récompenses exclusives !</p>
+        <input type="text" class="promo-input" id="promo-input" placeholder="ENTRE TON CODE" maxlength="20">
+        <button class="promo-submit" onclick="usePromoCode()">🎁 Utiliser le code</button>
+        <div class="promo-result" id="promo-result"></div>
+    </div>
+    <div class="promo-history">
+        <h3>📋 Codes utilisés</h3>
+        <div id="promo-history-list"><p style="color:#555;text-align:center;font-size:13px">Aucun code utilisé</p></div>
+    </div>
+</div>
+
+<!-- REFERRAL -->
+<div class="page" id="page-referral">
+    <h2>👥 Parrainage</h2>
+    <div class="ref-box">
+        <h3>🎁 Invite tes amis !</h3>
+        <p>Gagne <strong style="color:#f0c040">500 coins</strong> pour chaque ami qui rejoint Horse Game !</p>
+        <div class="ref-link" id="ref-link">Chargement...</div>
+        <button class="copy-btn" id="copy-btn">📋 Copier mon lien</button>
+    </div>
+    <div class="ref-stats">
+        <h3>Amis invités</h3>
+        <div class="ref-count" id="ref-count">0</div>
+    </div>
+</div>
+
+<!-- CHAT -->
+<div class="page" id="page-chat" style="padding:0;padding-bottom:0">
+    <div class="chat-page">
+        <div class="chat-header">
+            <h2 style="margin-bottom:2px">💬 Chat Global</h2>
+            <div class="chat-online">● En ligne</div>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+            <div style="text-align:center;color:#555;font-size:13px;margin-top:20px">Chargement...</div>
+        </div>
+        <div class="chat-input-area">
+            <textarea class="chat-input" id="chat-input" placeholder="Écris un message..." rows="1" maxlength="200"></textarea>
+            <button class="chat-send-btn" onclick="sendChatMessage()">➤</button>
+        </div>
+    </div>
+</div>
+
+<!-- STATS -->
+<div class="page" id="page-stats">
+    <h2>📊 Mon Profil</h2>
+    <div style="background:linear-gradient(135deg,rgba(240,192,64,0.15),rgba(224,123,0,0.05));border:1px solid rgba(240,192,64,0.2);border-radius:20px;padding:20px;text-align:center;margin-bottom:15px;">
+        <div style="width:80px;height:80px;border-radius:50%;margin:0 auto 10px;border:3px solid #f0c040;overflow:hidden;background:linear-gradient(135deg,#f0c040,#e07b00);display:flex;align-items:center;justify-content:center;font-size:36px;" id="stats-avatar-div">
+            <img id="stats-avatar-img" src="" style="display:none;width:100%;height:100%;object-fit:cover;">
+            <span id="stats-avatar-emoji">🐴</span>
+        </div>
+        <div style="font-size:22px;font-weight:900;margin-bottom:5px;" id="stats-username">Joueur</div>
+        <div style="display:inline-block;border-radius:10px;padding:4px 12px;font-size:13px;font-weight:800;margin-bottom:15px;" id="stats-level">🥉 Bronze</div>
+        <div style="font-size:14px;color:#aaa;">Rang mondial : <span style="color:#f0c040;font-weight:900;font-size:18px;" id="stats-rank">#1</span></div>
+    </div>
+    <div style="background:linear-gradient(135deg,rgba(255,100,0,0.15),rgba(255,50,0,0.05));border:1px solid rgba(255,100,0,0.3);border-radius:20px;padding:20px;margin-bottom:15px;display:flex;align-items:center;gap:15px;">
+        <div style="font-size:48px;">🔥</div>
+        <div>
+            <div style="font-size:36px;font-weight:900;color:#ff6400;line-height:1;" id="stats-streak">0</div>
+            <div style="font-size:13px;color:#aaa;margin-top:3px;">Jours consécutifs</div>
+        </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:15px;">
+        <div style="background:rgba(22,33,62,0.9);border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:15px;text-align:center;">
+            <div style="font-size:28px;margin-bottom:8px;">💰</div>
+            <div style="font-size:18px;font-weight:900;color:#f0c040;margin-bottom:3px;" id="stats-total-coins">0</div>
+            <div style="font-size:11px;color:#888;">Total coins</div>
+        </div>
+        <div style="background:rgba(22,33,62,0.9);border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:15px;text-align:center;">
+            <div style="font-size:28px;margin-bottom:8px;">👆</div>
+            <div style="font-size:18px;font-weight:900;color:#f0c040;margin-bottom:3px;" id="stats-total-taps">0</div>
+            <div style="font-size:11px;color:#888;">Total taps</div>
+        </div>
+        <div style="background:rgba(22,33,62,0.9);border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:15px;text-align:center;">
+            <div style="font-size:28px;margin-bottom:8px;">⚡</div>
+            <div style="font-size:18px;font-weight:900;color:#f0c040;margin-bottom:3px;" id="stats-coins-hour">0</div>
+            <div style="font-size:11px;color:#888;">Coins/heure</div>
+        </div>
+        <div style="background:rgba(22,33,62,0.9);border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:15px;text-align:center;">
+            <div style="font-size:28px;margin-bottom:8px;">🎯</div>
+            <div style="font-size:18px;font-weight:900;color:#f0c040;margin-bottom:3px;" id="stats-missions">0</div>
+            <div style="font-size:11px;color:#888;">Missions faites</div>
+        </div>
+        <div style="background:rgba(22,33,62,0.9);border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:15px;text-align:center;">
+            <div style="font-size:28px;margin-bottom:8px;">👥</div>
+            <div style="font-size:18px;font-weight:900;color:#f0c040;margin-bottom:3px;" id="stats-referrals">0</div>
+            <div style="font-size:11px;color:#888;">Amis invités</div>
+        </div>
+        <div style="background:rgba(22,33,62,0.9);border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:15px;text-align:center;">
+            <div style="font-size:28px;margin-bottom:8px;">🎰</div>
+            <div style="font-size:18px;font-weight:900;color:#f0c040;margin-bottom:3px;" id="stats-total-spins">0</div>
+            <div style="font-size:11px;color:#888;">Tours de roue</div>
+        </div>
+    </div>
+</div>
+
+<!-- NAV -->
+<nav class="nav">
+    <button class="nav-btn active" onclick="showPage('home', this)"><span class="nav-icon">🎮</span>Jouer</button>
+    <button class="nav-btn" onclick="showPage('cards', this)"><span class="nav-icon">🃏</span>Cartes</button>
+    <button class="nav-btn" onclick="showPage('missions', this)"><span class="nav-icon">🎯</span>Missions</button>
+    <button class="nav-btn" onclick="showPage('leaderboard', this)"><span class="nav-icon">🏆</span>Top</button>
+    <button class="nav-btn" onclick="showPage('more', this)"><span class="nav-icon">•••</span>Plus</button>
+</nav>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.expand();
+
+// Anti zoom
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('touchstart', function(e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+document.addEventListener('dblclick', e => e.preventDefault());
+
+const API = 'https://horse-game-production.up.railway.app';
+const telegramId = tg.initDataUnsafe?.user?.id?.toString() || 'test123';
+const telegramUsername = tg.initDataUnsafe?.user?.first_name || tg.initDataUnsafe?.user?.username || 'Joueur';
+
+let coins = 0;
+let coinsPerTap = 1;
+let coinsPerHour = 0;
+let cards = [];
+let referrals = 0;
+let totalCoins = 0;
+let saveTimeout = null;
+let sessionTaps = 0;
+let walletAddress = null;
+let tonConnectUI = null;
+
+const LEVEL_COLORS = { Bronze: '#cd7f32', Silver: '#c0c0c0', Gold: '#ffd700', Platinum: '#00bfff', Diamond: '#b9f2ff', Legend: '#ff6600' };
+
+const LEVELS = [
+    { name: 'Bronze',   icon: '🥉', min: 0,        tapBonus: 1  },
+    { name: 'Silver',   icon: '🥈', min: 50000,    tapBonus: 2  },
+    { name: 'Gold',     icon: '🥇', min: 500000,   tapBonus: 3  },
+    { name: 'Platinum', icon: '💠', min: 2000000,  tapBonus: 4  },
+    { name: 'Diamond',  icon: '💎', min: 10000000, tapBonus: 5  },
+    { name: 'Legend',   icon: '👑', min: 50000000, tapBonus: 10 },
+];
+
+const CARDS_DATA = [
+    { id: 'mine',      icon: '⛏️',  name: 'Mine',      baseCost: 100,    baseIncome: 10    },
+    { id: 'factory',   icon: '🏭',  name: 'Usine',     baseCost: 500,    baseIncome: 50    },
+    { id: 'bank',      icon: '🏦',  name: 'Banque',    baseCost: 2000,   baseIncome: 200   },
+    { id: 'rocket',    icon: '🚀',  name: 'Fusée',     baseCost: 10000,  baseIncome: 1000  },
+    { id: 'robot',     icon: '🤖',  name: 'Robot',     baseCost: 50000,  baseIncome: 5000  },
+    { id: 'satellite', icon: '🛸',  name: 'Satellite', baseCost: 200000, baseIncome: 20000 },
+];
+
+const MISSIONS = [
+    { id: 'daily_login', icon: '📅', name: 'Connexion du jour', desc: "Connecte-toi aujourd'hui", reward: 500,  check: () => true },
+    { id: 'tap_100',     icon: '👆', name: 'Tapeur',            desc: 'Tape 100 fois',             reward: 1000, check: () => sessionTaps >= 100 },
+    { id: 'buy_card',    icon: '🃏', name: 'Collectionneur',    desc: 'Achète une carte',           reward: 2000, check: () => cards.length > 0 },
+    { id: 'coins_1000',  icon: '💰', name: 'Riche !',           desc: 'Accumule 1000 coins',        reward: 3000, check: () => coins >= 1000 },
+];
+
+const WHEEL_REWARDS = [
+    { label: '500 🪙',  color: '#e07b00', icon: '🪙' },
+    { label: '1K 🪙',   color: '#f0c040', icon: '🪙' },
+    { label: '5K 🪙',   color: '#e07b00', icon: '💰' },
+    { label: '10K 🪙',  color: '#f0c040', icon: '💰' },
+    { label: '⚡ x2',   color: '#0088cc', icon: '⚡' },
+    { label: '🔥 x3',   color: '#cc4400', icon: '🔥' },
+    { label: '🃏 Carte',color: '#6600cc', icon: '🃏' },
+    { label: '💎 50K',  color: '#00cc88', icon: '💎' },
+];
+
+const BOOSTS = [
+    { id: 'boost_x2', icon: '⚡', name: 'x2 Boost', multiplier: 2, duration: 30, cooldown: 3600 },
+    { id: 'boost_x3', icon: '🔥', name: 'x3 Boost', multiplier: 3, duration: 30, cooldown: 3600 },
+    { id: 'boost_x5', icon: '💎', name: 'x5 Boost', multiplier: 5, duration: 30, cooldown: 7200 },
+];
+
+// ============ NAVIGATION ============
+function showPage(name, btn) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    if (btn) btn.classList.add('active');
+    if (name === 'leaderboard') { const lv = getCurrentLevel().name; currentLeaderboardLevel = lv; document.getElementById('level-tab-title').textContent = LEVEL_ICONS[lv] + ' ' + lv; document.querySelectorAll('.level-tab').forEach((t,i) => { const lvs=['Bronze','Silver','Gold','Platinum','Diamond','Legend']; t.classList.toggle('active', lvs[i]===lv); }); loadLeaderboard(); }
+    if (name === 'wheel') { drawWheel(); loadWheelStatus(); }
+    if (name === 'shop') loadShop();
+    if (name === 'chat') { loadChat(); chatRefreshInterval = setInterval(loadChat, 5000); }
+    else { if (chatRefreshInterval) { clearInterval(chatRefreshInterval); chatRefreshInterval = null; } }
+    if (name === 'stats') loadStats();
+    if (name === 'missions') loadMissions();
+}
+
+function showPageFromHome(page) { const anyBtn = document.querySelector('.nav-btn'); showPage(page, anyBtn); }
+function navigateTo(page) { const moreBtn = document.querySelector('[onclick="showPage(\'more\', this)"]'); showPage(page, moreBtn); }
+
+// ============ FORMAT ============
+function formatNumber(n) { n = Math.floor(n||0); if(n>=1000000) return (n/1000000).toFixed(1)+'M'; if(n>=1000) return (n/1000).toFixed(1)+'K'; return n.toString(); }
+function formatCoins(n) { return Math.floor(n||0).toLocaleString('fr-FR'); }
+
+// ============ LEVEL ============
+function getCurrentLevel() { let l=LEVELS[0]; for(const lv of LEVELS){if(totalCoins>=lv.min)l=lv;} return l; }
+function getNextLevel() { const c=getCurrentLevel(); const i=LEVELS.findIndex(l=>l.name===c.name); return LEVELS[i+1]||null; }
+
+function updateLevelUI() {
+    const current = getCurrentLevel();
+    const next = getNextLevel();
+    const circle = document.getElementById('avatar-circle');
+    if(circle) circle.style.borderColor = LEVEL_COLORS[current.name]||'#cd7f32';
+    const ln = document.getElementById('header-level-name');
+    if(ln){ln.textContent=current.icon+' '+current.name;ln.style.color=LEVEL_COLORS[current.name]||'#cd7f32';}
+    const badge = document.getElementById('level-badge');
+    if(badge){badge.textContent=current.icon+' '+current.name;badge.style.background=LEVEL_COLORS[current.name]+'33';badge.style.color=LEVEL_COLORS[current.name];}
+    if(next){
+        const progress=Math.min(((totalCoins-current.min)/(next.min-current.min))*100,100);
+        const fill=document.getElementById('level-progress-fill');
+        if(fill)fill.style.width=progress+'%';
+        const curr=document.getElementById('level-current-coins');
+        const nxt=document.getElementById('level-next-coins');
+        if(curr)curr.textContent=formatNumber(current.min)+' → '+formatNumber(totalCoins);
+        if(nxt)nxt.textContent=formatNumber(next.min);
+    } else {
+        const fill=document.getElementById('level-progress-fill');
+        if(fill)fill.style.width='100%';
+        const curr=document.getElementById('level-current-coins');
+        if(curr)curr.textContent='👑 MAX';
+        const nxt=document.getElementById('level-next-coins');
+        if(nxt)nxt.textContent='';
+    }
+    if(window.lastSavedLevel!==current.name){
+        window.lastSavedLevel=current.name;
+        fetch(API+'/api/user/'+telegramId+'/update-level',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({level:current.name})}).catch(()=>{});
+    }
+}
+
+// ============ UI ============
+function updateUI() {
+    document.getElementById('username').textContent = telegramUsername;
+    document.getElementById('coins').textContent = formatCoins(coins);
+    document.getElementById('per-hour-val').textContent = formatNumber(coinsPerHour);
+    document.getElementById('ref-link').textContent = 'https://t.me/HorseGameBot?start='+telegramId;
+    document.getElementById('ref-count').textContent = referrals;
+    renderCards();
+    updateLevelUI();
+}
+
+// ============ LOAD USER ============
+async function loadUser() {
+    try {
+        const res = await fetch(API+'/api/user/init',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({telegramId,username:telegramUsername})});
+        if(res.ok){
+            const user=await res.json();
+            coins=parseInt(user.coins)||0;
+            coinsPerTap=parseInt(user.coins_per_tap)||1;
+            coinsPerHour=parseInt(user.coins_per_hour)||0;
+            cards=user.cards||[];
+            referrals=parseInt(user.referrals)||0;
+            totalCoins=Math.max(parseInt(user.coins)||0, parseInt(user.total_coins)||0);
+        }
+    } catch(e){}
+    updateUI();
+    // Photo
+    fetch(API+'/api/user/'+telegramId+'/photo').then(r=>r.json()).then(data=>{
+        if(data.photoUrl){
+            const img=document.getElementById('player-avatar');
+            img.src=data.photoUrl;img.style.display='block';
+            document.getElementById('avatar-emoji').style.display='none';
+            fetch(API+'/api/user/'+telegramId+'/save-photo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({photoUrl:data.photoUrl})}).catch(()=>{});
+        }
+    }).catch(()=>{});
+}
+
+async function saveCoins() {
+    try {
+        await fetch(API+'/api/user/'+telegramId+'/tap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({coins:Math.floor(coins)})});
+    } catch(e){}
+}
+
+// ============ TAP ============
+document.getElementById('tap-btn').addEventListener('click', (e) => {
+    coins+=coinsPerTap;
+    totalCoins=coins;
+    sessionTaps++;
+    const el=document.getElementById('coins');
+    el.textContent=formatCoins(coins);
+    el.style.transform='scale(1.1)';
+    setTimeout(()=>el.style.transform='scale(1)',100);
+    updateLevelUI();
+    const float=document.createElement('div');
+    float.className='float-tap';
+    float.textContent='+'+coinsPerTap;
+    float.style.left=(e.clientX-15)+'px';
+    float.style.top=(e.clientY-30)+'px';
+    document.body.appendChild(float);
+    setTimeout(()=>float.remove(),800);
+    clearTimeout(saveTimeout);
+    saveTimeout=setTimeout(saveCoins,1500);
+    if(sessionTaps%50===0){fetch(API+'/api/user/'+telegramId+'/update-taps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taps:50})}).catch(()=>{});}
+});
+
+// ============ CARDS ============
+function renderCards() {
+    const grid=document.getElementById('cards-grid');
+    if(!grid)return;
+    grid.innerHTML=CARDS_DATA.map(card=>{
+        const userCard=cards.find(c=>c.cardId===card.id);
+        const level=userCard?parseInt(userCard.level):0;
+        const cost=Math.floor(card.baseCost*Math.pow(1.5,level));
+        const income=card.baseIncome*(level+1);
+        return `<div class="card" style="opacity:${coins>=cost?1:0.6}" onclick="buyCard('${card.id}',${cost},${card.baseIncome})">
+            <div class="card-icon">${card.icon}</div>
+            <div class="card-name">${card.name}</div>
+            <div class="card-level">Niv. ${level}</div>
+            <div class="card-income">+${formatNumber(income)}/h</div>
+            <div class="card-cost">💰 ${formatNumber(cost)}</div>
+        </div>`;
+    }).join('');
+}
+
+async function buyCard(cardId,cost,baseIncome) {
+    if(coins<cost){alert('Pas assez de coins !');return;}
+    try{
+        const res=await fetch(API+'/api/user/'+telegramId+'/buy-card',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cardId,cost,coinsPerHour:baseIncome})});
+        if(res.ok){const user=await res.json();coins=parseInt(user.coins)||0;coinsPerTap=parseInt(user.coins_per_tap)||1;coinsPerHour=parseInt(user.coins_per_hour)||0;cards=user.cards||[];updateUI();}
+    }catch(e){alert('Erreur achat !');}
+}
+
+// ============ MISSIONS ============
+let completedMissions=[];
+
+async function loadMissions() {
+    try{const res=await fetch(API+'/api/missions/'+telegramId);if(res.ok){const data=await res.json();completedMissions=data.map(m=>m.mission_id);}}catch(e){}
+    renderMissions();
+}
+
+function renderMissions() {
+    const list=document.getElementById('missions-list');
+    if(!list)return;
+    list.innerHTML=MISSIONS.map(m=>{
+        const done=completedMissions.includes(m.id);
+        const canClaim=m.check()&&!done;
+        return `<div class="mission-item ${done?'completed':''}">
+            <div class="mission-icon">${m.icon}</div>
+            <div class="mission-info">
+                <div class="mission-name">${m.name}</div>
+                <div class="mission-reward">+${formatNumber(m.reward)} coins</div>
+                <div class="mission-progress">${m.desc}</div>
+            </div>
+            <button class="mission-btn ${done?'done':''}" onclick="claimMission('${m.id}',${m.reward})" ${done?'disabled':''}>
+                ${done?'✅':canClaim?'Réclamer':'⏳'}
+            </button>
+        </div>`;
+    }).join('');
+}
+
+async function claimMission(missionId,reward) {
+    const mission=MISSIONS.find(m=>m.id===missionId);
+    if(!mission||!mission.check()){alert('Mission pas encore accomplie !');return;}
+    try{
+        const res=await fetch(API+'/api/missions/'+telegramId+'/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({missionId,reward})});
+        if(res.ok){const user=await res.json();coins=parseInt(user.coins)||0;completedMissions.push(missionId);updateUI();renderMissions();alert('🎉 +'+formatNumber(reward)+' coins !');}
+        else{const err=await res.json();alert(err.error||'Erreur');}
+    }catch(e){alert('Erreur réseau');}
+}
+
+// ============ LEADERBOARD ============
+let currentLeaderboardLevel='Bronze';
+const LEVEL_ICONS={Bronze:'🥉',Silver:'🥈',Gold:'🥇',Platinum:'💠',Diamond:'💎',Legend:'👑'};
+
+async function switchLeaderboard(level,btn) {
+    document.querySelectorAll('.level-tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    currentLeaderboardLevel=level;
+    document.getElementById('level-tab-title').textContent=LEVEL_ICONS[level]+' '+level;
+    await loadLeaderboard();
+}
+
+async function loadLeaderboard() {
+    try{
+        const res=await fetch(API+'/api/leaderboard?level='+currentLeaderboardLevel);
+        const users=await res.json();
+        const list=document.getElementById('leaderboard-list');
+        const myIndex=users.findIndex(u=>u.telegram_id===telegramId);
+        const myRankHtml=myIndex>=0?`<div class="my-rank"><div class="leader-rank">${myIndex+1}</div><div class="leader-name my-rank-label" style="font-size:11px;">👤 Toi - ${telegramUsername}</div><div class="leader-coins"><img src="/coins_silver.png" style="width:18px;height:18px;object-fit:cover;border-radius:50%;vertical-align:middle;" onerror="this.style.display='none'"> ${formatNumber(coins)}</div></div>`:'';
+        if(users.length===0){list.innerHTML=myRankHtml+`<div class="empty-leaderboard"><div class="empty-icon">${LEVEL_ICONS[currentLeaderboardLevel]}</div><p>Aucun joueur en ${currentLeaderboardLevel} !</p></div>`;return;}
+        list.innerHTML=myRankHtml+users.map((u,i)=>`
+            <div class="leader-item" style="${u.telegram_id===telegramId?'border-color:rgba(240,192,64,0.4)':''}">
+                <div class="leader-rank">${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)}</div>
+                <div class="leader-avatar">${u.photo_url?'<img src="'+u.photo_url+'" onerror="this.style.display=\'none\'">':u.username.charAt(0).toUpperCase()}</div>
+                <div class="leader-name">${u.username}</div>
+                <div class="leader-coins"><img src="/coins_silver.png" style="width:18px;height:18px;object-fit:cover;border-radius:50%;vertical-align:middle;" onerror="this.style.display='none'"> ${formatNumber(u.coins)}</div>
+            </div>`).join('');
+    }catch(e){}
+}
+
+// ============ BOOSTS ============
+let boostCooldowns=JSON.parse(localStorage.getItem('boostCooldowns_'+telegramId)||'{}');
+let activeBoost=null;let boostTimer=null;let boostCountdown=0;
+
+function renderBoosts() {
+    const container=document.getElementById('boost-container');
+    if(!container)return;
+    const now=Date.now();
+    container.innerHTML=BOOSTS.map(b=>{
+        const cooldownEnd=boostCooldowns[b.id]||0;
+        const remaining=Math.max(0,Math.ceil((cooldownEnd-now)/1000));
+        const isActive=activeBoost&&activeBoost.id===b.id;
+        const onCooldown=remaining>0&&!isActive;
+        return `<button class="boost-btn ${isActive?'active-boost':''} ${onCooldown?'cooldown':''}" onclick="activateBoost('${b.id}')">
+            <div class="boost-icon">${b.icon}</div>
+            <div class="boost-name">${b.name}</div>
+            <div class="boost-timer">${isActive?'⚡ Actif':onCooldown?formatTime(remaining):'Prêt !'}</div>
+        </button>`;
+    }).join('');
+}
+
+function formatTime(s){if(s>=3600)return Math.floor(s/3600)+'h';if(s>=60)return Math.floor(s/60)+'m';return s+'s';}
+
+function activateBoost(boostId) {
+    const now=Date.now();const boost=BOOSTS.find(b=>b.id===boostId);if(!boost)return;
+    if((boostCooldowns[boostId]||0)>now){alert('Boost en cooldown !');return;}
+    if(activeBoost){alert('Un boost est déjà actif !');return;}
+    activeBoost=boost;coinsPerTap=coinsPerTap*boost.multiplier;boostCountdown=boost.duration;
+    document.getElementById('boost-active-bar').style.display='block';
+    document.getElementById('boost-multiplier').textContent=boost.multiplier;
+    document.getElementById('boost-countdown').textContent=boostCountdown;
+    boostCooldowns[boostId]=now+(boost.cooldown*1000);
+    localStorage.setItem('boostCooldowns_'+telegramId,JSON.stringify(boostCooldowns));
+    boostTimer=setInterval(()=>{
+        boostCountdown--;
+        document.getElementById('boost-countdown').textContent=boostCountdown;
+        renderBoosts();
+        if(boostCountdown<=0){clearInterval(boostTimer);coinsPerTap=Math.max(1,Math.floor(coinsPerTap/boost.multiplier));document.getElementById('boost-active-bar').style.display='none';activeBoost=null;renderBoosts();}
+    },1000);
+    renderBoosts();
+}
+setInterval(renderBoosts,1000);
+
+// ============ WHEEL ============
+let wheelSpinning=false;let freeSpinUsed=false;let currentRotation=0;
+
+function drawWheel() {
+    const canvas=document.getElementById('wheelCanvas');if(!canvas)return;
+    const ctx=canvas.getContext('2d');const centerX=150,centerY=150,radius=145;
+    const sliceAngle=(2*Math.PI)/WHEEL_REWARDS.length;
+    WHEEL_REWARDS.forEach((reward,i)=>{
+        const startAngle=i*sliceAngle-Math.PI/2;const endAngle=startAngle+sliceAngle;
+        ctx.beginPath();ctx.moveTo(centerX,centerY);ctx.arc(centerX,centerY,radius,startAngle,endAngle);ctx.closePath();
+        ctx.fillStyle=reward.color;ctx.fill();ctx.strokeStyle='#1a1a2e';ctx.lineWidth=2;ctx.stroke();
+        ctx.save();ctx.translate(centerX,centerY);ctx.rotate(startAngle+sliceAngle/2);
+        ctx.textAlign='right';ctx.fillStyle='white';ctx.font='bold 11px Nunito, Arial';
+        ctx.fillText(reward.label,radius-10,4);ctx.restore();
+    });
+    ctx.beginPath();ctx.arc(centerX,centerY,20,0,2*Math.PI);ctx.fillStyle='#1a1a2e';ctx.fill();
+    ctx.strokeStyle='#f0c040';ctx.lineWidth=3;ctx.stroke();
+}
+
+async function loadWheelStatus() {
+    try{const res=await fetch(API+'/api/wheel/'+telegramId+'/status');if(res.ok){const data=await res.json();freeSpinUsed=data.freeSpinUsed;updateWheelStatus();}}catch(e){}
+}
+
+function updateWheelStatus() {
+    const btn=document.getElementById('spin-btn');const status=document.getElementById('wheel-status');
+    if(!freeSpinUsed){btn.textContent='🎰 Tour Gratuit !';status.textContent='✨ 1 tour gratuit disponible !';status.style.color='#f0c040';}
+    else{btn.textContent='🎰 Tourner (1000 🪙)';status.textContent='Tour gratuit utilisé. Prochain gratuit demain !';status.style.color='#888';}
+}
+
+async function spinWheel() {
+    if(wheelSpinning)return;
+    wheelSpinning=true;document.getElementById('spin-btn').disabled=true;document.getElementById('wheel-result').style.display='none';
+    try{
+        const res=await fetch(API+'/api/wheel/'+telegramId+'/spin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+        if(!res.ok){const err=await res.json();alert(err.error||'Erreur');wheelSpinning=false;document.getElementById('spin-btn').disabled=false;return;}
+        const data=await res.json();const reward=data.reward;
+        const rewardIndex=WHEEL_REWARDS.findIndex(r=>r.label===reward.label);
+        const sliceAngle=360/WHEEL_REWARDS.length;
+        const targetAngle=360-(rewardIndex*sliceAngle)-sliceAngle/2;
+        const spins=5*360;const finalRotation=currentRotation+spins+targetAngle-(currentRotation%360);
+        const canvas=document.getElementById('wheelCanvas');
+        canvas.style.transition='transform 4s cubic-bezier(0.17,0.67,0.12,0.99)';
+        canvas.style.transform='rotate('+finalRotation+'deg)';currentRotation=finalRotation;
+        setTimeout(()=>{
+            wheelSpinning=false;freeSpinUsed=true;updateWheelStatus();document.getElementById('spin-btn').disabled=false;
+            const resultEl=document.getElementById('wheel-result');
+            document.getElementById('result-icon').textContent=WHEEL_REWARDS[rewardIndex].icon;
+            document.getElementById('result-text').textContent='Tu as gagné '+reward.label+' !';
+            resultEl.style.display='block';
+            if(reward.type==='coins'){coins+=reward.value;totalCoins+=reward.value;document.getElementById('coins').textContent=formatCoins(coins);updateLevelUI();}
+        },4200);
+    }catch(e){alert('Erreur réseau');wheelSpinning=false;document.getElementById('spin-btn').disabled=false;}
+}
+
+// ============ SHOP ============
+let shopItems=[];let currentShopTab='ton';
+
+async function loadShop() {
+    try{const res=await fetch(API+'/api/shop');if(res.ok)shopItems=await res.json();renderShop();}catch(e){}
+}
+
+function switchShopTab(tab,btn) {
+    document.querySelectorAll('.shop-tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');currentShopTab=tab;renderShop();
+}
+
+function renderShop() {
+    const grid=document.getElementById('shop-grid');if(!grid)return;
+    const filtered=shopItems.filter(item=>currentShopTab==='ton'?item.priceTon:item.priceCoins);
+    grid.innerHTML=filtered.map(item=>`
+        <div class="shop-item" onclick="buyItem('${item.id}')">
+            <div class="shop-item-icon">${item.icon}</div>
+            <div class="shop-item-name">${item.name}</div>
+            <div class="shop-item-desc">${getItemDesc(item)}</div>
+            <div class="shop-item-price ${item.priceTon?'price-ton':'price-coins'}">${item.priceTon?'💎 '+item.priceTon+' TON':'🪙 '+formatNumber(item.priceCoins)}</div>
+        </div>`).join('');
+}
+
+function getItemDesc(item){
+    if(item.type==='tap')return'+'+item.value+' tap permanent';
+    if(item.type==='coins')return formatNumber(item.value)+' coins bonus';
+    if(item.type==='vip')return'Badge VIP exclusif 👑';
+    if(item.type==='wheel')return item.value+' tours de roue';
+    if(item.type==='shield')return'Protection '+item.value+'h';
+    return'';
+}
+
+async function buyItem(itemId) {
+    const item=shopItems.find(i=>i.id===itemId);if(!item)return;
+    if(item.priceCoins){
+        if(coins<item.priceCoins){alert('Pas assez de coins !');return;}
+        if(!confirm('Acheter '+item.name+' pour '+formatNumber(item.priceCoins)+' coins ?'))return;
+        try{
+            const res=await fetch(API+'/api/shop/'+telegramId+'/buy-coins',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({itemId})});
+            if(res.ok){const user=await res.json();coins=parseInt(user.coins)||0;coinsPerTap=parseInt(user.coins_per_tap)||1;coinsPerHour=parseInt(user.coins_per_hour)||0;updateUI();alert('✅ '+item.icon+' '+item.name+' acheté !');}
+            else{const err=await res.json();alert(err.error||'Erreur');}
+        }catch(e){alert('Erreur réseau');}
+    } else {
+        if(!walletAddress){alert('💎 Connecte ton wallet TON d\'abord !');return;}
+        try{
+            const tx={validUntil:Math.floor(Date.now()/1000)+600,messages:[{address:'UQDGKus1j0cjtOTy-FeqvGDpqfohTLlL82L03_GXDpl6tZSE',amount:String(Math.floor(item.priceTon*1e9))}]};
+            await tonConnectUI.sendTransaction(tx);
+            const res=await fetch(API+'/api/shop/'+telegramId+'/buy-ton',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({itemId,txHash:'confirmed'})});
+            if(res.ok){const user=await res.json();coins=parseInt(user.coins)||0;coinsPerTap=parseInt(user.coins_per_tap)||1;coinsPerHour=parseInt(user.coins_per_hour)||0;updateUI();alert('✅ Achat TON réussi ! '+item.icon+' '+item.name);}
+        }catch(e){if(e.message!=='Reject request')alert('Erreur: '+e.message);}
+    }
+}
+
+// ============ PROMO ============
+let usedPromos=[];
+
+async function usePromoCode() {
+    const code=document.getElementById('promo-input').value.trim().toUpperCase();
+    if(!code){showPromoResult('error','Entre un code !');return;}
+    try{
+        const res=await fetch(API+'/api/promo/'+telegramId+'/use',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+        const data=await res.json();
+        if(res.ok){coins=parseInt(data.user.coins)||0;totalCoins=coins;updateUI();updateLevelUI();document.getElementById('promo-input').value='';showPromoResult('success','🎉 +'+formatNumber(data.reward)+' coins !');usedPromos.unshift({code,reward:data.reward});renderPromoHistory();}
+        else showPromoResult('error','❌ '+data.error);
+    }catch(e){showPromoResult('error','❌ Erreur réseau');}
+}
+
+function showPromoResult(type,message){const el=document.getElementById('promo-result');el.className='promo-result '+type;el.textContent=message;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}
+function renderPromoHistory(){const list=document.getElementById('promo-history-list');if(usedPromos.length===0){list.innerHTML='<p style="color:#555;text-align:center;font-size:13px">Aucun code utilisé</p>';return;}list.innerHTML=usedPromos.map(p=>`<div class="promo-history-item"><span class="promo-code-tag">${p.code}</span><span style="color:#f0c040;font-weight:700">+${formatNumber(p.reward)} 🪙</span></div>`).join('');}
+document.getElementById('promo-input').addEventListener('keypress',(e)=>{if(e.key==='Enter')usePromoCode();});
+
+// ============ CHAT ============
+let chatRefreshInterval=null;
+const LEVEL_COLORS_CHAT={Bronze:'#cd7f32',Silver:'#c0c0c0',Gold:'#ffd700',Platinum:'#00bfff',Diamond:'#b9f2ff',Legend:'#ff6600'};
+
+function formatChatTime(timestamp){const date=new Date(timestamp);const diff=Date.now()-date;if(diff<60000)return'maintenant';if(diff<3600000)return Math.floor(diff/60000)+'min';if(diff<86400000)return Math.floor(diff/3600000)+'h';return Math.floor(diff/86400000)+'j';}
+
+async function loadChat() {
+    try{
+        const res=await fetch(API+'/api/chat');if(!res.ok)return;
+        const messages=await res.json();const container=document.getElementById('chat-messages');
+        const isAtBottom=container.scrollHeight-container.scrollTop-container.clientHeight<50;
+        if(messages.length===0){container.innerHTML='<div style="text-align:center;color:#555;font-size:13px;margin-top:20px">Sois le premier à écrire ! 👋</div>';return;}
+        container.innerHTML=messages.reverse().map(msg=>{
+            const isOwn=msg.telegram_id===telegramId;
+            const levelColor=LEVEL_COLORS_CHAT[msg.level]||'#cd7f32';
+            return `<div class="chat-message ${isOwn?'own':''}">
+                <div class="chat-avatar">${msg.photo_url?'<img src="'+msg.photo_url+'" onerror="this.style.display=\'none\'">':'👊'}</div>
+                <div class="chat-bubble">
+                    <div class="chat-meta">
+                        <span class="chat-name">${msg.username}</span>
+                        <span class="chat-level-badge" style="background:${levelColor}33;color:${levelColor}">${msg.level}</span>
+                        ${msg.is_vip?'<span class="chat-vip-badge">VIP</span>':''}
+                        <span class="chat-time">${formatChatTime(msg.created_at)}</span>
+                    </div>
+                    <div class="chat-text">${msg.message}</div>
+                </div>
+            </div>`;
+        }).join('');
+        if(isAtBottom)container.scrollTop=container.scrollHeight;
+    }catch(e){}
+}
+
+async function sendChatMessage(){
+    const input=document.getElementById('chat-input');const message=input.value.trim();if(!message)return;
+    try{const res=await fetch(API+'/api/chat/'+telegramId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});if(res.ok){input.value='';await loadChat();const container=document.getElementById('chat-messages');container.scrollTop=container.scrollHeight;}else{const err=await res.json();alert(err.error);}}catch(e){alert('Erreur réseau');}
+}
+document.getElementById('chat-input').addEventListener('keypress',(e)=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChatMessage();}});
+
+// ============ STATS ============
+async function loadStats(){
+    try{
+        const res=await fetch(API+'/api/stats/'+telegramId);if(!res.ok)return;const data=await res.json();const user=data.user;const current=getCurrentLevel();
+        const statsImg=document.getElementById('stats-avatar-img');const statsEmoji=document.getElementById('stats-avatar-emoji');
+        const mainImg=document.getElementById('player-avatar');
+        if(mainImg&&mainImg.src&&mainImg.style.display!=='none'){statsImg.src=mainImg.src;statsImg.style.display='block';statsEmoji.style.display='none';}
+        document.getElementById('stats-username').textContent=telegramUsername;
+        document.getElementById('stats-level').textContent=current.icon+' '+current.name;
+        document.getElementById('stats-level').style.background=LEVEL_COLORS[current.name]+'33';
+        document.getElementById('stats-level').style.color=LEVEL_COLORS[current.name];
+        document.getElementById('stats-rank').textContent='#'+data.globalRank;
+        document.getElementById('stats-streak').textContent=user.streak||0;
+        document.getElementById('stats-total-coins').textContent=formatNumber(user.coins);
+        document.getElementById('stats-total-taps').textContent=formatNumber(user.total_taps||0);
+        document.getElementById('stats-coins-hour').textContent=formatNumber(user.coins_per_hour);
+        document.getElementById('stats-missions').textContent=data.totalMissions;
+        document.getElementById('stats-referrals').textContent=user.referrals||0;
+        document.getElementById('stats-total-spins').textContent=data.totalSpins;
+    }catch(e){}
+}
+
+// ============ WALLET TON ============
+async function initTonConnect(){
+    try{
+        tonConnectUI=new TON_CONNECT_UI.TonConnectUI({manifestUrl:'https://raw.githubusercontent.com/Kira-jump/horse-game/main/public/tonconnect-manifest.json',restoreConnection:true});
+        tonConnectUI.onStatusChange(wallet=>{
+            if(wallet){
+                walletAddress=wallet.account.address;
+                document.getElementById('wallet-btn').style.display='none';
+                document.getElementById('wallet-connected').style.display='block';
+                document.getElementById('wallet-address').textContent=walletAddress.slice(0,8)+'...'+walletAddress.slice(-6);
+                fetch(API+'/api/user/'+telegramId+'/wallet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({walletAddress})}).catch(()=>{});
+                localStorage.setItem('wallet_'+telegramId,walletAddress);
+            } else {
+                walletAddress=null;
+                document.getElementById('wallet-btn').style.display='flex';
+                document.getElementById('wallet-connected').style.display='none';
+            }
+        });
+    }catch(e){}
+}
+
+async function connectWallet(){if(tonConnectUI)await tonConnectUI.openModal();}
+
+async function checkWalletForUser(){
+    await initTonConnect();
+    setTimeout(()=>{if(!walletAddress)document.getElementById('wallet-btn').style.display='flex';},2000);
+}
+
+// ============ COPY ============
+document.getElementById('copy-btn').addEventListener('click',()=>{navigator.clipboard.writeText('https://t.me/HorseGameBot?start='+telegramId).then(()=>alert('Lien copié ! 🎉'));});
+
+// ============ PASSIVE INCOME ============
+setInterval(()=>{if(coinsPerHour>0){coins+=coinsPerHour/3600;totalCoins=coins;document.getElementById('coins').textContent=formatCoins(coins);}},1000);
+
+// ============ INIT ============
+checkWalletForUser();
+loadUser();
+renderBoosts();
+loadMissions();
+</script>
+</body>
+</html>
